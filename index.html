@@ -1,28 +1,93 @@
-<html><body>
+<html>
+
+<body>
   <div id="mapdiv"></div>
   <script src="http://www.openlayers.org/api/OpenLayers.js"></script>
   <script>
     map = new OpenLayers.Map("mapdiv");
     map.addLayer(new OpenLayers.Layer.OSM());
 
+    epsg4326 = new OpenLayers.Projection("EPSG:4326"); //WGS 1984 projection
+    projectTo = map.getProjectionObject(); //The map projection (Spherical Mercator)
+    var lonLat = new OpenLayers.LonLat(5.720864, 45.184281).transform(epsg4326, projectTo);
+    var zoom = 10;
+    map.setCenter(lonLat, zoom);
+
+    // var markers = new OpenLayers.Layer.Markers("Markers");
+    // map.addLayer(markers);
+
+    var vectorLayer = new OpenLayers.Layer.Vector("Overlay");
+    map.addLayer(vectorLayer);
+
+    function handler(response) {
+      var obj = JSON.parse(request.responseText);
+      for (let i = 0; i < obj.length; i++) {
+        let dsc = '<a href="http://'
+        + obj[i].link.slice(2)
+        + '" target="_blank" >'
+        + obj[i].city.name
+        + " - " + obj[i].price
+        + 'euros <br><img src="'
+        + obj[i].images[0]
+        + '"></img></a>';
+
+        var feature = new OpenLayers.Feature.Vector(
+          new OpenLayers.Geometry.Point(obj[i].city.lon, obj[i].city.lat).transform(epsg4326, projectTo), {
+            description: dsc
+          }, {
+            externalGraphic: 'img/marker.png',
+            graphicHeight: 25,
+            graphicWidth: 21,
+            graphicXOffset: -12,
+            graphicYOffset: -25
+          }
+        );
+        vectorLayer.addFeatures(feature);
+      }
+    }
+
+
     var request = OpenLayers.Request.GET({
-        url: "http://localhost:8080/api"
+      url: "http://localhost:8080/api",
+      headers: {
+        'Access-Control-Allow-Origin': '*'
+      },
+      callback: handler
     });
-    console.log(request);
 
-    var lonLat = new OpenLayers.LonLat( -0.1279688 ,51.5077286 )
-          .transform(
-            new OpenLayers.Projection("EPSG:4326"), // transform from WGS 1984
-            map.getProjectionObject() // to Spherical Mercator Projection
-          );
-          
-    var zoom=16;
 
-    var markers = new OpenLayers.Layer.Markers( "Markers" );
-    map.addLayer(markers);
-    
-    markers.addMarker(new OpenLayers.Marker(lonLat));
-    
-    map.setCenter (lonLat, zoom);
+
+    //Add a selector control to the vectorLayer with popup functions
+    var controls = {
+      selector: new OpenLayers.Control.SelectFeature(vectorLayer, {
+        onSelect: createPopup,
+        onUnselect: destroyPopup
+      })
+    };
+
+    function createPopup(feature) {
+      feature.popup = new OpenLayers.Popup.FramedCloud("pop",
+        feature.geometry.getBounds().getCenterLonLat(),
+        null,
+        '<div class="markerContent">' + feature.attributes.description + '</div>',
+        null,
+        true,
+        function() {
+          controls['selector'].unselectAll();
+        }
+      );
+      //feature.popup.closeOnMove = true;
+      map.addPopup(feature.popup);
+    }
+
+    function destroyPopup(feature) {
+      feature.popup.destroy();
+      feature.popup = null;
+    }
+
+    map.addControl(controls['selector']);
+    controls['selector'].activate();
   </script>
-</body></html>
+</body>
+
+</html>
