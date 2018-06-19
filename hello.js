@@ -1,7 +1,15 @@
-var mongoose = require('mongoose'),  Schema = mongoose.Schema;
+var mongoose = require('mongoose'),
+  Schema = mongoose.Schema;
 var cors = require('cors')
 
-mongoose.connect('mongodb://localhost/leboncoin', function(err) {
+var ProgressBar = require('progress');
+
+let dev = true;
+let db = "mongodb://localhost/leboncoin";
+if (dev)
+  db += "-dev"
+console.log("With " + db);
+mongoose.connect(db, function(err) {
   if (err) {
     throw err;
   }
@@ -41,8 +49,8 @@ var citySchema = new mongoose.Schema({
 var SearchResult = mongoose.model('SearchResult', searchResultSchema);
 var City = mongoose.model('City', citySchema);
 
-let cleanup = false;
-let searchBool = false;
+let cleanup = dev;
+let searchBool = dev;
 
 if (cleanup) {
 
@@ -95,22 +103,29 @@ app.use('/api', router);
 // START THE SERVER
 // =============================================================================
 app.listen(port);
-console.log('Magic happens on port ' + port);
 
 
 const request = require('superagent');
 
 const leboncoin = require('leboncoin-api');
-var nPages = 15
-// var sleep = require('sleep');
-
-
-// http://api.geonames.org/searchJSON?q=grenoble&country=FR&username=7hibault
-
+var nPages = 20
 var globalCounter = 0;
 
+var timer = setInterval(function() {
+  if (bar.complete) {
+    clearInterval(timer);
+    console.log('Magic happens on port ' + port);
+  } else if (bar.curr === 5) {
+    bar.interrupt('this message appears above the progress bar\ncurrent progress is ' + bar.curr + '/' + bar.total);
+  }
+}, 2000);
 
 if (searchBool) {
+  var bar = new ProgressBar('Searched pages [:bar] :current/:total :percent :etas', {
+    complete: '=',
+    incomplete: ' ',
+    total: nPages
+  });
   for (let i = 0; i < nPages; i++) {
     var search = new leboncoin.Search()
       .setPage(i)
@@ -122,6 +137,7 @@ if (searchBool) {
       .addSearchExtra("ret", [1]) // house and garden (3)
 
     search.run().then(function(data) {
+
       if (data.nbResults === 0) {
         crawledAll = true;
       }
@@ -147,8 +163,10 @@ if (searchBool) {
                     name: foundCity
                   }
                   if (res.body.geonames && res.body.geonames.length > 0) {
-                    obj.lat = Number(res.body.geonames[0].lat);
-                    obj.lon = Number(res.body.geonames[0].lng);
+                    let j = 0;
+                    while (res.body.geonames[j].adminName1 != "Auvergne-Rhône-Alpes") j++;
+                    obj.lat = Number(res.body.geonames[j].lat);
+                    obj.lon = Number(res.body.geonames[j].lng);
                   }
                   let newCity = new City(obj);
                   newCity.save(function(err) {
@@ -173,13 +191,13 @@ if (searchBool) {
             let insertResult = new SearchResult(result);
             insertResult.save(function(err) {
               if (err) console.log(err);
-              else console.log(globalCounter++);
             })
           })
           .catch((err) => {
             console.log(err);
           });
       }
+      bar.tick();
     }, function(err) {
       console.error(err);
     });
